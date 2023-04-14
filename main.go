@@ -71,11 +71,10 @@ struct handles {
 };
 typedef struct handles handles;
 
-size_t start(size_t getProcAddrPtr)  {
-	PFN_vkGetInstanceProcAddr getProcAddr = (PFN_vkGetInstanceProcAddr)getProcAddrPtr;
+handles *start()  {
 	handles *h = malloc(sizeof( handles));
 
-	PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)(getProcAddr(NULL, "vkCreateInstance"));
+	PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)(vkGetInstanceProcAddr(NULL, "vkCreateInstance"));
 
 	VkInstanceCreateInfo *createInfo = createInstanceCreateInfo();
 
@@ -85,8 +84,8 @@ size_t start(size_t getProcAddrPtr)  {
 	free(createInfo->pApplicationInfo);
 	free(createInfo);
 
-	PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)(getProcAddr(h->instance, "vkEnumeratePhysicalDevices"));
-	PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)(getProcAddr(h->instance, "vkCreateDevice"));
+	PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)(vkGetInstanceProcAddr(h->instance, "vkEnumeratePhysicalDevices"));
+	PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)(vkGetInstanceProcAddr(h->instance, "vkCreateDevice"));
 
 	uint32_t count;
 
@@ -105,14 +104,12 @@ size_t start(size_t getProcAddrPtr)  {
 	free(createDeviceInfo->pQueueCreateInfos);
 	free(createDeviceInfo);
 
-	return (size_t)h;
+	return h;
 }
 
-void end(size_t getProcAddrPtr, size_t handlesPtr) {
-	PFN_vkGetInstanceProcAddr getProcAddr = (PFN_vkGetInstanceProcAddr)getProcAddrPtr;
-	struct handles *h = (struct handles*)handlesPtr;
-	PFN_vkDestroyInstance destroyInstance = (PFN_vkDestroyInstance)(getProcAddr(h->instance, "vkDestroyInstance"));
-	PFN_vkDestroyDevice destroyDevice = (PFN_vkDestroyDevice)(getProcAddr(h->instance, "vkDestroyDevice"));
+void end(handles *h) {
+	PFN_vkDestroyInstance destroyInstance = (PFN_vkDestroyInstance)(vkGetInstanceProcAddr(h->instance, "vkDestroyInstance"));
+	PFN_vkDestroyDevice destroyDevice = (PFN_vkDestroyDevice)(vkGetInstanceProcAddr(h->instance, "vkDestroyDevice"));
 
 	destroyDevice(h->device, NULL);
 	destroyInstance(h->instance, NULL);
@@ -127,12 +124,11 @@ import (
 )
 
 func main() {
-	procAddr := uintptr(C.vkGetInstanceProcAddr)
 
-	for i := 0; i < 100; i++ {
-		handles := C.start(C.size_t(procAddr))
+	for i := 0; i < 10000; i++ {
+		handles := C.start()
 		runtime.GC()
-		C.end(C.size_t(procAddr), handles)
+		C.end(handles)
 		fmt.Println(i)
 	}
 }
