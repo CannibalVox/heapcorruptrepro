@@ -71,49 +71,52 @@ struct handles {
 };
 typedef struct handles handles;
 
-handles *start()  {
-	handles *handles = malloc(sizeof( handles));
+size_t start(size_t getProcAddrPtr)  {
+	PFN_vkGetInstanceProcAddr getProcAddr = (PFN_vkGetInstanceProcAddr)getProcAddrPtr;
+	handles *h = malloc(sizeof( handles));
 
-	PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)(vkGetInstanceProcAddr(NULL, "vkCreateInstance"));
+	PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)(getProcAddr(NULL, "vkCreateInstance"));
 
 	VkInstanceCreateInfo *createInfo = createInstanceCreateInfo();
 
-	VkResult res = createInstance(createInfo, NULL, &handles->instance);
+	VkResult res = createInstance(createInfo, NULL, &h->instance);
 	assert(res == VK_SUCCESS);
 
 	free(createInfo->pApplicationInfo);
 	free(createInfo);
 
-	PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)(vkGetInstanceProcAddr(handles->instance, "vkEnumeratePhysicalDevices"));
-	PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)(vkGetInstanceProcAddr(handles->instance, "vkCreateDevice"));
+	PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)(getProcAddr(h->instance, "vkEnumeratePhysicalDevices"));
+	PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)(getProcAddr(h->instance, "vkCreateDevice"));
 
 	uint32_t count;
 
-	res = enumeratePhysicalDevices(handles->instance, &count, NULL);
+	res = enumeratePhysicalDevices(h->instance, &count, NULL);
 	assert(res == VK_SUCCESS);
 
 	VkPhysicalDevice *physicalDeviceHandles = malloc(count*sizeof(VkPhysicalDevice));
-	res = enumeratePhysicalDevices(handles->instance, &count, physicalDeviceHandles);
+	res = enumeratePhysicalDevices(h->instance, &count, physicalDeviceHandles);
 	assert(res == VK_SUCCESS);
 
 	VkDeviceCreateInfo *createDeviceInfo = createDeviceCreateInfo();
-	res = createDevice(physicalDeviceHandles[0], createDeviceInfo, NULL, &handles->device);
+	res = createDevice(physicalDeviceHandles[0], createDeviceInfo, NULL, &h->device);
 	assert(res == VK_SUCCESS);
 
 	free(physicalDeviceHandles);
 	free(createDeviceInfo->pQueueCreateInfos);
 	free(createDeviceInfo);
 
-	return handles;
+	return (size_t)h;
 }
 
-void end(handles *handles) {
-	PFN_vkDestroyInstance destroyInstance = (PFN_vkDestroyInstance)(vkGetInstanceProcAddr(handles->instance, "vkDestroyInstance"));
-	PFN_vkDestroyDevice destroyDevice = (PFN_vkDestroyDevice)(vkGetInstanceProcAddr(handles->instance, "vkDestroyDevice"));
+void end(size_t getProcAddrPtr, size_t handlesPtr) {
+	PFN_vkGetInstanceProcAddr getProcAddr = (PFN_vkGetInstanceProcAddr)getProcAddrPtr;
+	struct handles *h = (struct handles*)handlesPtr;
+	PFN_vkDestroyInstance destroyInstance = (PFN_vkDestroyInstance)(getProcAddr(h->instance, "vkDestroyInstance"));
+	PFN_vkDestroyDevice destroyDevice = (PFN_vkDestroyDevice)(getProcAddr(h->instance, "vkDestroyDevice"));
 
-	destroyDevice(handles->device, NULL);
-	destroyInstance(handles->instance, NULL);
-	free(handles);
+	destroyDevice(h->device, NULL);
+	destroyInstance(h->instance, NULL);
+	free(h);
 }
 
 */
@@ -124,11 +127,12 @@ import (
 )
 
 func main() {
+	procAddr := uintptr(C.vkGetInstanceProcAddr)
 
-	for i := 0; i < 10000; i++ {
-		handles := C.start()
+	for i := 0; i < 100; i++ {
+		handles := C.start(C.size_t(procAddr))
 		runtime.GC()
-		C.end(handles)
+		C.end(C.size_t(procAddr), handles)
 		fmt.Println(i)
 	}
 }
