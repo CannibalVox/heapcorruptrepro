@@ -5,7 +5,10 @@ package main
 #include <stdlib.h>
 #include <assert.h>
 #include <pthread.h>
-#include "../vulkan.h"
+#include "vulkan.h"
+
+VkInstance instance;
+VkDevice device;
 
 VkInstanceCreateInfo *createInstanceCreateInfo()  {
 	VkInstanceCreateInfo *createInfo = malloc(sizeof(VkInstanceCreateInfo));
@@ -66,31 +69,33 @@ VkDeviceCreateInfo *createDeviceCreateInfo() {
 	return createInfo;
 }
 
-void start(VkInstance *instance, VkDevice *device)  {
+void start()  {
 	PFN_vkCreateInstance createInstance = (PFN_vkCreateInstance)(vkGetInstanceProcAddr(NULL, "vkCreateInstance"));
 
 	VkInstanceCreateInfo *createInfo = createInstanceCreateInfo();
 
-	VkResult res = createInstance(createInfo, NULL, instance);
+	VkResult res = createInstance(createInfo, NULL, &instance);
 	assert(res == VK_SUCCESS);
 
 	free(createInfo->pApplicationInfo);
 	free(createInfo);
 
-	PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)(vkGetInstanceProcAddr(*instance, "vkEnumeratePhysicalDevices"));
-	PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)(vkGetInstanceProcAddr(*instance, "vkCreateDevice"));
+	PFN_vkEnumeratePhysicalDevices enumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)(vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices"));
+	PFN_vkCreateDevice createDevice = (PFN_vkCreateDevice)(vkGetInstanceProcAddr(instance, "vkCreateDevice"));
 
-	uint32_t count;
+	uint32_t *count = malloc(sizeof(uint32_t));
 
-	res = enumeratePhysicalDevices(*instance, &count, NULL);
+	res = enumeratePhysicalDevices(instance, count, NULL);
 	assert(res == VK_SUCCESS);
 
-	VkPhysicalDevice *physicalDeviceHandles = malloc(count*sizeof(VkPhysicalDevice));
-	res = enumeratePhysicalDevices(*instance, &count, physicalDeviceHandles);
+	VkPhysicalDevice *physicalDeviceHandles = malloc((*count)*sizeof(VkPhysicalDevice));
+	res = enumeratePhysicalDevices(instance, count, physicalDeviceHandles);
 	assert(res == VK_SUCCESS);
+
+	free(count);
 
 	VkDeviceCreateInfo *createDeviceInfo = createDeviceCreateInfo();
-	res = createDevice(physicalDeviceHandles[0], createDeviceInfo, NULL, device);
+	res = createDevice(physicalDeviceHandles[0], createDeviceInfo, NULL, &device);
 	assert(res == VK_SUCCESS);
 
 	free(physicalDeviceHandles);
@@ -98,7 +103,7 @@ void start(VkInstance *instance, VkDevice *device)  {
 	free(createDeviceInfo);
 }
 
-void end(VkInstance instance, VkDevice device) {
+void end() {
 	PFN_vkDestroyInstance destroyInstance = (PFN_vkDestroyInstance)(vkGetInstanceProcAddr(instance, "vkDestroyInstance"));
 	PFN_vkDestroyDevice destroyDevice = (PFN_vkDestroyDevice)(vkGetInstanceProcAddr(instance, "vkDestroyDevice"));
 
@@ -115,52 +120,52 @@ import (
 	"runtime/debug"
 )
 
+var done = make(chan bool)
+
+func handler() {
+	C.start()
+
+	var e errgroup.Group
+	for i := 0; i < 5; i++ {
+		e.Go(func() error {
+			return doWork(1, 1000000)
+		})
+	}
+
+	last := C.pthread_self()
+	_ = e.Wait()
+	new := C.pthread_self()
+	if new != last {
+		fmt.Println("thread", new)
+	}
+
+	C.end()
+
+	done <- true
+}
+
 func doWork(num1, num2 int) error {
-	for num1 <= num2 {
-		for i := 2; i <= int(math.Sqrt(float64(num1))); i++ {
-			if num1%i == 0 {
+	n := num1
+	for n <= num2 {
+		for i := 2; i <= int(math.Sqrt(float64(n))); i++ {
+			if n%i == 0 {
 				break
 			}
 		}
-		num1++
+		n++
 	}
+
 	return nil
 }
 
 func main() {
+	//procTimeBeginPeriod.Call(uintptr(1))
 	debug.SetGCPercent(-1)
-	last := C.pthread_self()
+
 	for i := 0; i < 100; i++ {
-		new := C.pthread_self()
-		if last != new {
-			fmt.Println("after end", new)
-		}
-		last = new
-		var instance C.VkInstance
-		var device C.VkDevice
-
-		C.start(&instance, &device)
-
-		new = C.pthread_self()
-		if last != new {
-			fmt.Println("after start", new)
-		}
-		last = new
-
-		var errGroup errgroup.Group
-		for j := 0; j < 5; j++ {
-			errGroup.Go(func() error {
-				return doWork(1, 5000)
-			})
-		}
-		_ = errGroup.Wait()
-		new = C.pthread_self()
-		if last != new {
-			fmt.Println("after wait", new)
-		}
-		last = new
-
-		C.end(instance, device)
+		go handler()
+		<-done
 		fmt.Println(i)
 	}
+
 }
